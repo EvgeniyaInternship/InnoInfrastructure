@@ -5,15 +5,15 @@ services:
     image: postgres:16-alpine
     container_name: keycloak-db
     environment:
-      POSTGRES_DB: ${KEYCLOAK_DB:-keycloak}
-      POSTGRES_USER: ${KEYCLOAK_DB_USER:-keycloak}
-      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-admin}
+      POSTGRES_DB: ${KEYCLOAK_DB}
+      POSTGRES_USER: ${KEYCLOAK_DB_USER}
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
     ports:
       - "5435:5432"
     volumes:
       - keycloak_db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${KEYCLOAK_DB_USER:-keycloak} -d ${KEYCLOAK_DB:-keycloak}"]
+      test: ["CMD-SHELL", "pg_isready -U ${KEYCLOAK_DB_USER} -d ${KEYCLOAK_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -26,18 +26,24 @@ services:
     command: start-dev
     environment:
       KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/${KEYCLOAK_DB:-keycloak}
-      KC_DB_USERNAME: ${KEYCLOAK_DB_USER:-keycloak}
-      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-admin}
-      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USER:-admin}
-      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
-      KC_HOSTNAME: http://localhost:8080
+      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/${KEYCLOAK_DB}
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USER}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USER}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KC_HOSTNAME: ${KEYCLOAK_BASE_URL}
       KC_HTTP_ENABLED: "true"
     ports:
       - "8080:8080"
     depends_on:
       keycloak-db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/8080'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
     networks:
       - inno
 
@@ -45,13 +51,13 @@ services:
     image: quay.io/keycloak/keycloak:latest
     depends_on:
       keycloak:
-        condition: service_started
+        condition: service_healthy
     environment:
-      KEYCLOAK_ADMIN_USER: ${KEYCLOAK_ADMIN_USER:-admin}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
-      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-inno-realm}
-      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-dotnet-auth-service}
-      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-}
+      KEYCLOAK_ADMIN_USER: ${KEYCLOAK_ADMIN_USER}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID}
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
     entrypoint: ["/bin/bash", "/init-realm.sh"]
     volumes:
       - ./keycloak/init-realm.sh:/init-realm.sh:ro
@@ -64,18 +70,18 @@ services:
     container_name: sonarqube-db
     restart: on-failure:5
     environment:
-      POSTGRES_USER: sonar
-      POSTGRES_PASSWORD: sonar
-      POSTGRES_DB: sonar
+      POSTGRES_USER: ${SONAR_DB_USER}
+      POSTGRES_PASSWORD: ${SONAR_DB_PASSWORD}
+      POSTGRES_DB: ${SONAR_DB}
     volumes:
       - sonarqube_db_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sonar -d sonar"]
+      test: ["CMD-SHELL", "pg_isready -U ${SONAR_DB_USER} -d ${SONAR_DB}"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
     networks:
       - inno
 
@@ -84,9 +90,9 @@ services:
     container_name: sonarqube
     restart: on-failure:5
     environment:
-      SONAR_JDBC_USERNAME: sonar
-      SONAR_JDBC_PASSWORD: sonar
-      SONAR_JDBC_URL: jdbc:postgresql://sonarqube-db:5432/sonar
+      SONAR_JDBC_USERNAME: ${SONAR_DB_USER}
+      SONAR_JDBC_PASSWORD: ${SONAR_DB_PASSWORD}
+      SONAR_JDBC_URL: jdbc:postgresql://sonarqube-db:5432/${SONAR_DB}
     volumes:
       - sonarqube_data:/opt/sonarqube/data
       - sonarqube_extensions:/opt/sonarqube/extensions
@@ -96,6 +102,12 @@ services:
     depends_on:
       sonarqube-db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/api/system/status | grep -q '\"status\":\"UP\"'"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
     networks:
       - inno
 
@@ -103,13 +115,19 @@ services:
     image: mongo:7
     container_name: logs-db
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-logs}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-logs}
-      MONGO_INITDB_DATABASE: ${MONGO_DB:-logs}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGO_DB}
     ports:
       - "27017:27017"
     volumes:
       - logs_db_data:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --username \"$$MONGO_INITDB_ROOT_USERNAME\" --password \"$$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval \"quit(db.adminCommand({ ping: 1 }).ok ? 0 : 1)\""]
+      interval: 10s
+      timeout: 15s
+      retries: 10
+      start_period: 20s
     networks:
       - inno
 
@@ -117,16 +135,16 @@ services:
     image: postgres:16-alpine
     container_name: facility-db
     environment:
-      POSTGRES_DB: ${FACILITY_DB:-facility}
-      POSTGRES_USER: ${FACILITY_DB_USER:-facility}
-      POSTGRES_PASSWORD: ${FACILITY_DB_PASSWORD:-facility}
+      POSTGRES_DB: ${FACILITY_DB}
+      POSTGRES_USER: ${FACILITY_DB_USER}
+      POSTGRES_PASSWORD: ${FACILITY_DB_PASSWORD}
     ports:
       - "5434:5432"
     volumes:
       - facility_db_data:/var/lib/postgresql/data
       - ../InnoFacilityApi/FacilityApi/FacilityApi.Infrastructure/Scripts/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${FACILITY_DB_USER:-facility} -d ${FACILITY_DB:-facility}"]
+      test: ["CMD-SHELL", "pg_isready -U ${FACILITY_DB_USER} -d ${FACILITY_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -137,15 +155,15 @@ services:
     image: postgres:16-alpine
     container_name: profiles-db
     environment:
-      POSTGRES_DB: ${PROFILES_DB:-profiles}
-      POSTGRES_USER: ${PROFILES_DB_USER:-profiles}
-      POSTGRES_PASSWORD: ${PROFILES_DB_PASSWORD:-profiles}
+      POSTGRES_DB: ${PROFILES_DB}
+      POSTGRES_USER: ${PROFILES_DB_USER}
+      POSTGRES_PASSWORD: ${PROFILES_DB_PASSWORD}
     ports:
       - "5433:5432"
     volumes:
       - profiles_db_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${PROFILES_DB_USER:-profiles} -d ${PROFILES_DB:-profiles}"]
+      test: ["CMD-SHELL", "pg_isready -U ${PROFILES_DB_USER} -d ${PROFILES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -159,7 +177,7 @@ services:
       target: migrate
     environment:
       ASPNETCORE_ENVIRONMENT: Development
-      ConnectionStrings__ProfilesDb: Host=profiles-db;Port=5432;Database=${PROFILES_DB:-profiles};Username=${PROFILES_DB_USER:-profiles};Password=${PROFILES_DB_PASSWORD:-profiles}
+      ConnectionStrings__ProfilesDb: Host=profiles-db;Port=5432;Database=${PROFILES_DB};Username=${PROFILES_DB_USER};Password=${PROFILES_DB_PASSWORD}
     depends_on:
       profiles-db:
         condition: service_healthy
@@ -175,17 +193,23 @@ services:
       - "5119:5119"
     environment:
       ASPNETCORE_ENVIRONMENT: Development
-      Keycloak__BaseUrl: http://localhost:8080
-      Keycloak__Realm: ${KEYCLOAK_REALM:-inno-realm}
-      Keycloak__ClientId: ${KEYCLOAK_CLIENT_ID:-dotnet-auth-service}
-      Keycloak__ClientSecret: ${KEYCLOAK_CLIENT_SECRET:-}
-      Keycloak__Audience: dotnet-auth-service
-      Keycloak__RedirectUri: http://localhost:5119/Auth/callback
-      Keycloak__PostLoginRedirectUri: http://localhost:5173/
+      Keycloak__BaseUrl: ${KEYCLOAK_BASE_URL}
+      Keycloak__Realm: ${KEYCLOAK_REALM}
+      Keycloak__ClientId: ${KEYCLOAK_CLIENT_ID}
+      Keycloak__ClientSecret: ${KEYCLOAK_CLIENT_SECRET}
+      Keycloak__Audience: ${KEYCLOAK_CLIENT_ID}
+      Keycloak__RedirectUri: ${AUTH_API_URL}/Auth/callback
+      Keycloak__PostLoginRedirectUri: ${UI_URL}/
       Keycloak__RequireHttpsMetadata: "false"
     depends_on:
       keycloak-init:
         condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "socat -u OPEN:/dev/null TCP:127.0.0.1:5119,connect-timeout=3"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
     networks:
       - inno
 
@@ -198,17 +222,23 @@ services:
       - "5082:5082"
     environment:
       ASPNETCORE_ENVIRONMENT: Development
-      ConnectionStrings__ProfilesDb: Host=profiles-db;Port=5432;Database=${PROFILES_DB:-profiles};Username=${PROFILES_DB_USER:-profiles};Password=${PROFILES_DB_PASSWORD:-profiles}
-      AuthApi__BaseUrl: http://auth-api:5119
-      Keycloak__BaseUrl: http://localhost:8080
-      Keycloak__Realm: ${KEYCLOAK_REALM:-inno-realm}
-      Keycloak__Audience: dotnet-auth-service
+      ConnectionStrings__ProfilesDb: Host=profiles-db;Port=5432;Database=${PROFILES_DB};Username=${PROFILES_DB_USER};Password=${PROFILES_DB_PASSWORD}
+      AuthApi__BaseUrl: ${AUTH_API_INTERNAL_URL}
+      Keycloak__BaseUrl: ${KEYCLOAK_BASE_URL}
+      Keycloak__Realm: ${KEYCLOAK_REALM}
+      Keycloak__Audience: ${KEYCLOAK_CLIENT_ID}
       Keycloak__RequireHttpsMetadata: "false"
     depends_on:
       profiles-migrator:
         condition: service_completed_successfully
       auth-api:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "socat -u OPEN:/dev/null TCP:127.0.0.1:5082,connect-timeout=3"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
     networks:
       - inno
 
@@ -221,16 +251,22 @@ services:
       - "5035:5035"
     environment:
       ASPNETCORE_ENVIRONMENT: Development
-      ConnectionStrings__FacilityDb: Host=facility-db;Port=5432;Database=${FACILITY_DB:-facility};Username=${FACILITY_DB_USER:-facility};Password=${FACILITY_DB_PASSWORD:-facility}
-      Keycloak__BaseUrl: http://localhost:8080
-      Keycloak__Realm: ${KEYCLOAK_REALM:-inno-realm}
-      Keycloak__Audience: dotnet-auth-service
+      ConnectionStrings__FacilityDb: Host=facility-db;Port=5432;Database=${FACILITY_DB};Username=${FACILITY_DB_USER};Password=${FACILITY_DB_PASSWORD}
+      Keycloak__BaseUrl: ${KEYCLOAK_BASE_URL}
+      Keycloak__Realm: ${KEYCLOAK_REALM}
+      Keycloak__Audience: ${KEYCLOAK_CLIENT_ID}
       Keycloak__RequireHttpsMetadata: "false"
     depends_on:
       facility-db:
         condition: service_healthy
       keycloak:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "socat -u OPEN:/dev/null TCP:127.0.0.1:5035,connect-timeout=3"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
     networks:
       - inno
 
@@ -239,15 +275,24 @@ services:
       context: ../InnoUI/inno-ui
       dockerfile: Dockerfile
       args:
-        VITE_AUTH_API_URL: http://localhost:5119
-        VITE_PROFILES_API_URL: http://localhost:5082
+        VITE_AUTH_API_URL: ${AUTH_API_URL}
+        VITE_PROFILES_API_URL: ${PROFILES_API_URL}
     container_name: inno-ui
     ports:
       - "5173:80"
     depends_on:
-      - auth-api
-      - profiles-api
-      - facility-api
+      auth-api:
+        condition: service_healthy
+      profiles-api:
+        condition: service_healthy
+      facility-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     networks:
       - inno
 
