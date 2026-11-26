@@ -1,5 +1,7 @@
 name: inno
 
+x-mongo-logs-url: &mongo-logs-url "mongodb://${MONGO_USER}:${MONGO_PASSWORD}@logs-db:27017/${MONGO_DB}?authSource=admin"
+
 services:
   keycloak-db:
     image: postgres:16-alpine
@@ -131,6 +133,20 @@ services:
     networks:
       - inno
 
+  logs-ui:
+    image: mongo-express:1.0.2-20
+    container_name: logs-ui
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@logs-db:27017/?authSource=admin
+      ME_CONFIG_BASICAUTH: "false"
+    ports:
+      - "8081:8081"
+    depends_on:
+      logs-db:
+        condition: service_healthy
+    networks:
+      - inno
+
   facility-db:
     image: postgres:16-alpine
     container_name: facility-db
@@ -201,6 +217,7 @@ services:
       Keycloak__RedirectUri: ${AUTH_API_URL}/Auth/callback
       Keycloak__PostLoginRedirectUri: ${UI_URL}/
       Keycloak__RequireHttpsMetadata: "false"
+      Serilog__WriteTo__0__Args__databaseUrl: *mongo-logs-url
     depends_on:
       keycloak-init:
         condition: service_completed_successfully
@@ -228,6 +245,7 @@ services:
       Keycloak__Realm: ${KEYCLOAK_REALM}
       Keycloak__Audience: ${KEYCLOAK_CLIENT_ID}
       Keycloak__RequireHttpsMetadata: "false"
+      Serilog__WriteTo__0__Args__databaseUrl: *mongo-logs-url
     depends_on:
       profiles-migrator:
         condition: service_completed_successfully
@@ -256,6 +274,7 @@ services:
       Keycloak__Realm: ${KEYCLOAK_REALM}
       Keycloak__Audience: ${KEYCLOAK_CLIENT_ID}
       Keycloak__RequireHttpsMetadata: "false"
+      Serilog__WriteTo__0__Args__databaseUrl: *mongo-logs-url
     depends_on:
       facility-db:
         condition: service_healthy
