@@ -289,6 +289,24 @@ services:
     networks:
       - inno
 
+  appointments-api:
+    build:
+      context: ../InnoAppointmentsApi/AppointmentsApi
+      dockerfile: Dockerfile
+    container_name: appointments-api
+    ports:
+      - "5096:5096"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/5096'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - inno
+
   inno-ui:
     build:
       context: ../InnoUI/inno-ui
@@ -305,6 +323,8 @@ services:
       profiles-api:
         condition: service_healthy
       facility-api:
+        condition: service_healthy
+      appointments-api:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/"]
