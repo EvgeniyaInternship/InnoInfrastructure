@@ -10,6 +10,7 @@ Inno/
   InnoAuthApi/AuthApi/Dockerfile
   InnoProfilesApi/ProfilesApi/Dockerfile
   InnoFacilityApi/FacilityApi/Dockerfile
+  InnoAppointmentsApi/AppointmentsApi/Dockerfile
   InnoUI/inno-ui/Dockerfile
 ```
 
@@ -42,6 +43,7 @@ Database names and passwords for Keycloak, Profiles, Facility, and SonarQube are
 | profiles-api | `PROFILES_API_URL` | Profiles API. Logs to the MongoDB `profiles` collection |
 | facility-db | localhost:5434 | Facility PostgreSQL database. `001_init.sql` runs on an empty volume |
 | facility-api | http://localhost:5035 | Facility API. Logs to the MongoDB `facility` collection |
+| appointments-api | http://localhost:5096 | Appointments API |
 | logs-db | localhost:27017 | MongoDB database `MONGO_DB` |
 | logs-ui | http://localhost:8081 | Web UI for that MongoDB. No login |
 | inno-ui | `UI_URL` | Web UI. Nginx serves the built app and proxies `/profiles` and `/facility` |
@@ -50,9 +52,9 @@ Database names and passwords for Keycloak, Profiles, Facility, and SonarQube are
 
 Long-running services have a healthcheck with 10 retries. Auth, Profiles, and Facility wait until the services they call are healthy. The UI image receives `AUTH_API_URL` and `PROFILES_API_URL` as `VITE_AUTH_API_URL` and `VITE_PROFILES_API_URL`.
 
-Each API image listens on its public port and forwards `127.0.0.1:8080` to the `keycloak` container, so `KEYCLOAK_BASE_URL` can stay `http://localhost:8080` in the browser and inside the containers. Profiles calls Auth at `AUTH_API_INTERNAL_URL`.
+Auth, Profiles, and Facility listen on their public ports and forward `127.0.0.1:8080` to the `keycloak` container, so `KEYCLOAK_BASE_URL` can stay `http://localhost:8080` in the browser and inside those containers. Profiles calls Auth at `AUTH_API_INTERNAL_URL`. Appointments listens on `http://localhost:5096` and does not forward Keycloak.
 
-Serilog writes BSON documents to `logs-db`, database `MONGO_DB`. The URL is defined once as `x-mongo-logs-url` and each API receives it as `Serilog__WriteTo__0__Args__databaseUrl`. The collection name stays in each API's `appsettings.json`: `auth`, `profiles`, or `facility`.
+Serilog writes BSON documents to `logs-db`, database `MONGO_DB`. The URL is defined once as `x-mongo-logs-url` and Auth, Profiles, and Facility receive it as `Serilog__WriteTo__0__Args__databaseUrl`. The collection name stays in each of those APIs' `appsettings.json`: `auth`, `profiles`, or `facility`.
 
 Host `dotnet run` does not read this `.env`. Point `ConnectionStrings:ProfilesDb` at `localhost:5433` and `ConnectionStrings:FacilityDb` at `localhost:5434`. Port 5432 is SonarQube.
 
@@ -64,7 +66,7 @@ From this directory:
 Copy-Item .env.example .env
 docker compose up -d --build
 docker compose ps
-docker compose logs -f auth-api profiles-api facility-api
+docker compose logs -f auth-api profiles-api facility-api appointments-api
 docker compose down
 ```
 
